@@ -91,7 +91,7 @@ function removeDuplicates(arr) {
 }
 
 /* ===========================
-   FILTER ONLY WITH IMAGES
+   FILTER WITH IMAGES
 =========================== */
 function filterWithImages(arr) {
   return arr.filter(a => a.urlToImage && a.urlToImage.startsWith("http"));
@@ -116,7 +116,10 @@ app.get("/news", async (req, res) => {
 
     const withImages = filterWithImages(unique);
 
-    res.json({ articles: withImages.slice(0, 40) });
+    // 🔥 IMPORTANT FIX (fallback)
+    const finalData = withImages.length > 0 ? withImages : unique;
+
+    res.json({ articles: finalData.slice(0, 40) });
 
   } catch (err) {
     res.status(500).json({ error: "News fetch failed" });
@@ -142,7 +145,10 @@ app.get("/trending", async (req, res) => {
 
     const withImages = filterWithImages(unique);
 
-    res.json({ articles: withImages.slice(0, 30) });
+    // 🔥 IMPORTANT FIX (fallback)
+    const finalData = withImages.length > 0 ? withImages : unique;
+
+    res.json({ articles: finalData.slice(0, 30) });
 
   } catch (err) {
     res.status(500).json({ error: "Trending failed" });
