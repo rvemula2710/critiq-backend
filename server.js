@@ -1,6 +1,8 @@
 const express = require("express");
 const cors = require("cors");
 const Parser = require("rss-parser");
+const axios = require("axios");
+const cheerio = require("cheerio");
 
 const app = express();
 app.use(cors());
@@ -9,7 +11,28 @@ const parser = new Parser();
 const PORT = process.env.PORT || 5000;
 
 /* ===========================
-   IMAGE EXTRACTOR
+   EXTRACT IMAGE FROM ARTICLE
+=========================== */
+async function extractImageFromPage(url) {
+  try {
+    const { data } = await axios.get(url, { timeout: 5000 });
+    const $ = cheerio.load(data);
+
+    // ✅ Best source
+    const ogImage = $('meta[property="og:image"]').attr("content");
+    if (ogImage) return ogImage;
+
+    // fallback
+    const img = $("img").first().attr("src");
+    return img || null;
+
+  } catch (err) {
+    return null;
+  }
+}
+
+/* ===========================
+   EXTRACT IMAGE FROM RSS
 =========================== */
 function extractImage(item) {
   return (
@@ -36,12 +59,23 @@ async function fetchGoogleNews(query) {
     const url = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-IN&gl=IN&ceid=IN:en`;
     const feed = await parser.parseURL(url);
 
-    return feed.items.map(item => ({
-      title: cleanText(item.title),
-      url: item.link,
-      description: cleanText(item.contentSnippet),
-      publishedAt: item.pubDate,
-      urlToImage: extractImage(item)
+    return await Promise.all(feed.items.map(async item => {
+
+      let image = extractImage(item);
+
+      // 🔥 If no image → scrape article
+      if (!image && item.link) {
+        image = await extractImageFromPage(item.link);
+      }
+
+      return {
+        title: cleanText(item.title),
+        url: item.link,
+        description: cleanText(item.contentSnippet),
+        publishedAt: item.pubDate,
+        urlToImage: image
+      };
+
     }));
 
   } catch (err) {
@@ -65,12 +99,22 @@ async function fetchRSSFeeds() {
     try {
       const feed = await parser.parseURL(url);
 
-      const items = feed.items.map(item => ({
-        title: cleanText(item.title),
-        url: item.link,
-        description: cleanText(item.contentSnippet),
-        publishedAt: item.pubDate,
-        urlToImage: extractImage(item)
+      const items = await Promise.all(feed.items.map(async item => {
+
+        let image = extractImage(item);
+
+        if (!image && item.link) {
+          image = await extractImageFromPage(item.link);
+        }
+
+        return {
+          title: cleanText(item.title),
+          url: item.link,
+          description: cleanText(item.contentSnippet),
+          publishedAt: item.pubDate,
+          urlToImage: image
+        };
+
       }));
 
       all = all.concat(items);
@@ -91,13 +135,6 @@ function removeDuplicates(arr) {
 }
 
 /* ===========================
-   FILTER WITH IMAGES
-=========================== */
-function filterWithImages(arr) {
-  return arr.filter(a => a.urlToImage && a.urlToImage.startsWith("http"));
-}
-
-/* ===========================
    NEWS API
 =========================== */
 app.get("/news", async (req, res) => {
@@ -114,12 +151,7 @@ app.get("/news", async (req, res) => {
 
     const unique = removeDuplicates(all);
 
-    const withImages = filterWithImages(unique);
-
-    // 🔥 IMPORTANT FIX (fallback)
-    const finalData = withImages.length > 0 ? withImages : unique;
-
-    res.json({ articles: finalData.slice(0, 40) });
+    res.json({ articles: unique.slice(0, 30) });
 
   } catch (err) {
     res.status(500).json({ error: "News fetch failed" });
@@ -143,12 +175,7 @@ app.get("/trending", async (req, res) => {
 
     const unique = removeDuplicates(all);
 
-    const withImages = filterWithImages(unique);
-
-    // 🔥 IMPORTANT FIX (fallback)
-    const finalData = withImages.length > 0 ? withImages : unique;
-
-    res.json({ articles: finalData.slice(0, 30) });
+    res.json({ articles: unique.slice(0, 30) });
 
   } catch (err) {
     res.status(500).json({ error: "Trending failed" });
