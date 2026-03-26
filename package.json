@@ -6,9 +6,10 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "cors": "^2.8.5",
-    "express": "^4.18.2",
-    "rss-parser": "^3.12.0",
-    "translate": "^1.4.1"
+  "cors": "^2.8.5",
+  "express": "^4.18.2",
+  "rss-parser": "^3.12.0",
+  "axios": "^1.6.0",
+  "cheerio": "^1.0.0"
   }
 }
